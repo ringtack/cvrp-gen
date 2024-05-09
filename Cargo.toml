@@ -1,0 +1,17 @@
+[package]
+name = "cvrp-gen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.83"
+clap = { version = "4.5.4", features = ["derive"] }
+crossbeam = "0.8.4"
+env_logger = "0.11.3"
+fxhash = "0.2.1"
+kiddo = "4.2.0"
+lazy_static = "1.4.0"
+log = "0.4.21"
+ordered-float = "4.2.0"
+priority-queue = "2.0.2"
+rand = { version = "0.8.5", features = ["small_rng"] }
