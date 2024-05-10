@@ -29,7 +29,7 @@ lazy_static! {
     // Number of no improvement iterations to run before stopping
     iter_ni: 20_000,
     // Max restarts before stopping
-    max_restarts: 64,
+    max_restarts: 24,
     // Time limit in ms (TODO: change to 270s)
     time_limit: 10_000,
     // How often to print progress (in iterations)

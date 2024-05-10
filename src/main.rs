@@ -106,7 +106,7 @@ fn main() {
         let mut route_str = route.iter().map(|x| x.to_string()).collect::<Vec<_>>();
         route_str.insert(0, "0".to_string());
         route_str.push("0".to_string());
-        sol = route_str.join(" ");
+        sol = format!("{}{} ", sol, route_str.join(" "));
     }
     // Get rid of last space
     sol.pop();
@@ -114,7 +114,7 @@ fn main() {
     println!(
         "{}",
         format!(
-            r#"{{"Instance": "{}", "Time": "{:.2?}", "Result": "{:.2}", "Solution": "{}"}}"#,
+            r#"{{"Instance": "{}", "Time": {:.2?}, "Result": {:.2}, "Solution": "{}"}}"#,
             vrp.instance_name,
             vrp.start_time.elapsed().as_secs_f64(),
             best.objective,
