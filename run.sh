@@ -13,4 +13,4 @@ fi
 input=$1
 
 # run the solver
-./target/release/cvrp-gen --file "$input"
+./target/release/cvrp-gen --file "$input" --verbosity "info"

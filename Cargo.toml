@@ -12,6 +12,8 @@ fxhash = "0.2.1"
 kiddo = "4.2.0"
 lazy_static = "1.4.0"
 log = "0.4.21"
+num_cpus = "1.16.0"
 ordered-float = "4.2.0"
 priority-queue = "2.0.2"
 rand = { version = "0.8.5", features = ["small_rng"] }
+slotmap = "1.0.7"

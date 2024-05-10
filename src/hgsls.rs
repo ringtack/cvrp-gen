@@ -42,8 +42,8 @@ pub struct HGSLS {
     route_order: Vec<usize>,
 
     /// Customers i and j on which operators will act
-    ci: usize,
-    cj: usize,
+    cust_i: usize,
+    cust_j: usize,
 
     /// Individual being optimized
     ind: Individual,
@@ -60,16 +60,16 @@ pub struct HGSLS {
 
 impl HGSLS {
     /// Initializes internal HGSLS structures for a given individual.
-    pub fn new(ind: Individual, excess_penalty: f64) -> HGSLS {
+    pub fn new(ind: Individual) -> HGSLS {
         // Initialize HGSLS values from individual
         let mut hgsls = HGSLS {
             cust_order: ind.total_route.clone(),
             nn_order: ind.vrp.customer_nns.clone(),
             route_order: (0..ind.vrp.n_vehicles).collect(),
-            ci: 0,
-            cj: 0,
+            cust_i: 0,
+            cust_j: 0,
             ind,
-            excess_penalty,
+            excess_penalty: 0.,
         };
         // Initialize (i.e. shuffle) internal structures
         hgsls.reset();
@@ -80,8 +80,8 @@ impl HGSLS {
     /// already filled; thus, in the constructor, make sure to set values
     /// before calling this method.
     fn reset(&mut self) {
-        self.ci = 0;
-        self.cj = 0;
+        self.cust_i = 0;
+        self.cust_j = 0;
         // Shuffle customer, route, and NN order
         self.cust_order.shuffle(&mut thread_rng());
         self.route_order.shuffle(&mut thread_rng());
@@ -94,8 +94,8 @@ impl HGSLS {
 
     /// If accepted, relocate i to after j
     fn relocate_i_j(&mut self, accept: &AcceptOperator) -> bool {
-        let i = self.ci;
-        let j = self.cj;
+        let i = self.cust_i;
+        let j = self.cust_j;
 
         log::trace!("Trying relocate of {} after {}", i, j);
 
@@ -145,8 +145,8 @@ impl HGSLS {
 
     /// If accepted, relocate (i, i_next) to after j
     fn relocate_iin_j(&mut self, accept: &AcceptOperator) -> bool {
-        let i = self.ci;
-        let j = self.cj;
+        let i = self.cust_i;
+        let j = self.cust_j;
 
         log::trace!("Trying relocate ({}, {}) after {}", i, self.ind.succ[i], j);
 
@@ -212,8 +212,8 @@ impl HGSLS {
 
     /// If accepted, relocate (i, i_next) to after j as (i_next, i)
     fn relocate_iin_j_flip(&mut self, accept: &AcceptOperator) -> bool {
-        let i = self.ci;
-        let j = self.cj;
+        let i = self.cust_i;
+        let j = self.cust_j;
 
         log::trace!(
             "Trying relocate ({}, {}) after {} as ({}, {})",
@@ -282,8 +282,8 @@ impl HGSLS {
 
     /// If accepted, swap i with j
     fn swap_i_j(&mut self, accept: &AcceptOperator) -> bool {
-        let i = self.ci;
-        let j = self.cj;
+        let i = self.cust_i;
+        let j = self.cust_j;
 
         log::trace!("Trying swap {} with {}", i, j);
 
@@ -331,8 +331,8 @@ impl HGSLS {
 
     /// If accepted, swap (i, i_next) with j
     fn swap_iin_j(&mut self, accept: &AcceptOperator) -> bool {
-        let i = self.ci;
-        let j = self.cj;
+        let i = self.cust_i;
+        let j = self.cust_j;
 
         log::trace!("Trying swap ({}, {}) with {}", i, self.ind.succ[i], j);
 
@@ -392,8 +392,8 @@ impl HGSLS {
 
     /// If accepted, swap (i, i_next) with (j, j_next)
     fn swap_iin_jjn(&mut self, accept: &AcceptOperator) -> bool {
-        let i = self.ci;
-        let j = self.cj;
+        let i = self.cust_i;
+        let j = self.cust_j;
 
         log::trace!(
             "Trying swap ({}, {}) with ({}, {})",
@@ -472,8 +472,8 @@ impl HGSLS {
 
     /// If accepted, apply 2-opt move
     fn two_opt(&mut self, accept: &AcceptOperator) -> bool {
-        let i = self.ci;
-        let j = self.cj;
+        let i = self.cust_i;
+        let j = self.cust_j;
 
         log::trace!("Trying 2-opt move on {} and {}", i, j);
 
@@ -551,8 +551,8 @@ impl HGSLS {
     /// If accepted, apply 2-opt* move (swap (i, i_next) and (j, j_next) with
     /// (i, j_next) and (j, i_next))
     fn two_opt_star(&mut self, accept: &AcceptOperator) -> bool {
-        let i = self.ci;
-        let j = self.cj;
+        let i = self.cust_i;
+        let j = self.cust_j;
 
         log::trace!("Trying 2-opt* move on {} and {}", i, j);
 
@@ -700,8 +700,8 @@ impl HGSLS {
         let rj = self.ind.cust_routes[j];
         if ri == rj {
             let route = &mut self.ind.routes[rj];
-            let idx = route.iter().position(|&x| x == j).unwrap();
             log::trace!("Moving {} to after {} in route {:?}", j, i, route);
+            let idx = route.iter().position(|&x| x == j).unwrap();
             route.remove(idx);
             // Insert j after i in i's route
             let idx = route.iter().position(|&x| x == i).unwrap();
@@ -794,7 +794,12 @@ impl HGSLS {
 }
 
 impl LocalSearch for HGSLS {
-    fn run(&mut self, accept_temp: f64, time_limit: Duration) -> Individual {
+    fn run(&mut self, time_limit: Duration, excess_penalty: f64, accept_temp: f64) -> Individual {
+        // Set excess penalty (used by HGSLS for delta computation, used by Individual
+        // for objective computation)
+        self.excess_penalty = excess_penalty;
+        self.ind.set_excess_penalty(excess_penalty);
+
         // Get accept operator
         let accept = sa_accept(accept_temp);
 
@@ -804,11 +809,12 @@ impl LocalSearch for HGSLS {
         while improved {
             improved = false;
             // Re-initialize metadata
-            log::debug!("Resetting HGSLS w/ new random order");
+            log::trace!("Resetting HGSLS w/ new random order");
             self.reset();
 
             // If surpassed time limit, break
             if start.elapsed() >= time_limit {
+                log::debug!("reached time limit; breaking out of LS");
                 break;
             }
 
@@ -830,8 +836,8 @@ impl LocalSearch for HGSLS {
                         ci,
                         cj
                     );
-                    self.ci = cust_i;
-                    self.cj = cust_j;
+                    self.cust_i = cust_i;
+                    self.cust_j = cust_j;
                     if self.relocate_i_j(&accept) {
                         improved = true;
                     } else if self.relocate_iin_j(&accept) {
@@ -849,18 +855,19 @@ impl LocalSearch for HGSLS {
                     } else if self.two_opt_star(&accept) {
                         improved = true;
                     } else if self.ind.pred[cust_j] == 0 {
-                        // If cj's predecessor is depot, try moves that insert ci right after depot
-                        log::trace!("cust {}'s pred is depot", cust_j);
-                        self.cj = 0;
-                        if self.relocate_i_j(&accept) {
-                            improved = true;
-                        } else if self.relocate_iin_j(&accept) {
-                            improved = true;
-                        } else if self.relocate_iin_j_flip(&accept) {
-                            improved = true;
-                        } else if self.two_opt_star(&accept) {
-                            improved = true;
-                        }
+                        // If cj's predecessor is depot, try moves that insert
+                        // ci right after depot
+                        // log::trace!("cust {}'s pred is depot", cust_j);
+                        // self.cust_j = 0;
+                        // if self.relocate_i_j(&accept) {
+                        //     improved = true;
+                        // } else if self.relocate_iin_j(&accept) {
+                        //     improved = true;
+                        // } else if self.relocate_iin_j_flip(&accept) {
+                        //     improved = true;
+                        // } else if self.two_opt_star(&accept) {
+                        //     improved = true;
+                        // }
                     }
 
                     // Regardless of success/failure, increment cj to next closest NN
@@ -930,8 +937,8 @@ impl LocalSearch for HGSLS {
             }
         }
 
-        // Set objective, then return
-        self.ind.objective();
+        // Re-initialize metadata, then return
+        self.ind.initialize_metadata();
         self.ind.clone()
     }
 }

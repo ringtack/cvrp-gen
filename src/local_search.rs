@@ -3,15 +3,18 @@ use std::time::Duration;
 use crate::Individual;
 
 const EPSILON: f64 = 0.00001;
+// Default limit on LS time.
+pub const LS_LIMIT_MS: u64 = 5_000;
 
 /// Trait for a local search algorithm.
 pub trait LocalSearch {
     /// Run local search.
     /// - `accept_temp`: temperature for SA to accept worse solution
+    /// - `excess_penalty`: penalty for excess vehicle capacity
     /// - `time_limit`: time limit for search
     ///
     /// Returns the optimized individual found during local search.
-    fn run(&mut self, accept_temp: f64, time_limit: Duration) -> Individual;
+    fn run(&mut self, time_limit: Duration, excess_penalty: f64, accept_temp: f64) -> Individual;
 }
 
 /// Simulated annealing accept fn using temp.

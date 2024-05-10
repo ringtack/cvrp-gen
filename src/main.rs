@@ -14,7 +14,11 @@ use individual::*;
 use params::DEFAULT_PARAMS;
 use vrp_instance::VRPInstance;
 
-use crate::{hgsls::HGSLS, local_search::LocalSearch};
+use crate::{
+    genetic::{crossover, GeneticSearch},
+    hgsls::HGSLS,
+    local_search::LocalSearch,
+};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about = "CVRP Solver using hybrid genetic search.")]
@@ -22,86 +26,129 @@ pub struct Args {
     /// Path to the input file
     #[arg(short, long)]
     pub file: String,
+
+    /// Logging level (trace, debug, info, warn, error)
+    #[arg(short, long, default_value_t = log::LevelFilter::Info)]
+    pub verbosity: log::LevelFilter,
 }
 
 fn main() {
     let args = Args::parse();
 
     log::set_max_level(log::LevelFilter::Trace);
-    env_logger::builder()
-        .filter(None, log::LevelFilter::Info)
-        .init();
+    env_logger::builder().filter(None, args.verbosity).init();
 
     log::info!("Starting CVRP solver on instance: {}", args.file);
+
+    let mut params = DEFAULT_PARAMS.clone();
+    // params.n_threads = 1;
+    params.time_limit = 120_000;
     // Create VRP instance from file
-    let vrp = Arc::new(VRPInstance::new(args.file, DEFAULT_PARAMS.clone()));
+    let vrp = VRPInstance::new(args.file, params.clone());
 
-    // Create individual from VRP
-    let mut ind = Individual::new(vrp.clone());
-    // Solve using Bellman split
-    let res = ind.bellman_split();
+    // // Generate two individuals
+    // let mut ind = Individual::new(Arc::new(vrp.clone()));
+    // let mut ind2 = Individual::new(Arc::new(vrp.clone()));
+    // ind.bellman_split(1.5);
+    // ind2.bellman_split(1.5);
 
-    if res {
-        log::info!("Bellman split successful");
+    // // Attempt crossover
+    // let mut ind = crossover(&ind, &ind2);
+    // log::info!("Crossover complete; objective: {}", ind.objective());
 
-        log::debug!("Initial objective: {}", ind.objective());
-        log::info!("Vehicle routes: {:?}", ind.routes);
+    // Run basic HGSLS on VRP instance
+    // let mut ind = Individual::new(Arc::new(vrp.clone()));
+    // ind.bellman_split(1.1);
+    // // ind.greedy_nn();
+    // let mut ls = HGSLS::new(ind.clone());
+    // let mut learned = ls.run(
+    //     Duration::from_millis(5_000),
+    //     DEFAULT_PARAMS.excess_penalty,
+    //     0.1,
+    // );
+    // let mut ind = learned.clone();
+    // let mut ls = HGSLS::new(ind.clone());
+    // learned = ls.run(
+    //     Duration::from_millis(5_000),
+    //     DEFAULT_PARAMS.excess_penalty * 10.,
+    //     0.1,
+    // );
 
-        // Run local search on individual
-        let mut ls = HGSLS::new(ind.clone(), DEFAULT_PARAMS.excess_penalty);
-        let accept_temp = 0.1;
-        let mut learned = ls.run(accept_temp, Duration::from_millis(5_000));
+    // log::info!("Initial objective: {}", ind.objective());
+    // log::info!("Local search complete; objective: {}", learned.objective());
 
-        log::info!("Initial objective: {}", ind.objective());
-        log::info!("Local search complete; objective: {}", learned.objective());
-        // learned.save_solution_default();
+    // log::info!("Total runtime: {:.3?}", vrp.start_time.elapsed());
 
-        let mut objs = Vec::new();
-        objs.push(learned.objective);
-        for _ in 0..10 {
-            let mut best = learned.clone();
-            // Save split solution
-            best.bellman_split();
+    // Create genetic search instance
+    let mut gen = GeneticSearch::new(vrp.clone());
 
-            log::info!(
-                "Running local search again on split solution (obj: {})",
-                best.objective()
-            );
-            // Run local search on split solution
-            let mut ls = HGSLS::new(best.clone(), DEFAULT_PARAMS.excess_penalty);
-            let accept_temp = 0.1;
-            learned = ls.run(accept_temp, Duration::from_millis(5_000));
-            log::info!("Total route: {:?}", learned.total_route);
-            log::info!("Local search complete; objective: {}", learned.objective);
-            objs.push(learned.objective);
-        }
+    // Run genetic and get best result
+    let mut best = gen.run();
 
-        learned.save_solution_default();
+    best.save_solution_default();
 
-        // Get solution string from routes
-        let mut sol = String::new();
-        for route in learned.routes.iter() {
-            sol.push_str(&format!(
-                "0 {}",
-                route
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ));
-            sol.push_str(" 0 ");
-        }
-        log::info!("Total runtime: {:.3?}", vrp.start_time.elapsed());
-        log::info!("Objectives: {:?}", objs);
-        println!(
-            "{}",
-            format!(
-                r#"{{"Instance": "{}", "Time": "{:.2?}", "Result": "{:.2}", "Solution": "{}"}}"#,
-                vrp.instance_name,
-                vrp.start_time.elapsed().as_secs_f64(),
-                learned.objective,
-                sol,
-            )
-        )
+    // Get solution string from routes
+    let mut sol = String::new();
+    for route in best.routes.iter() {
+        sol.push_str(&format!(
+            "0 {}",
+            route
+                .iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        ));
+        sol.push_str(" 0 ");
     }
+    log::info!("Total runtime: {:.3?}", vrp.start_time.elapsed());
+    println!(
+        "{}",
+        format!(
+            r#"{{"Instance": "{}", "Time": "{:.2?}", "Result": "{:.2}", "Solution": "{}"}}"#,
+            vrp.instance_name,
+            vrp.start_time.elapsed().as_secs_f64(),
+            best.objective,
+            sol,
+        )
+    )
 }
+
+// // Create individual from VRP
+// let mut ind = Individual::new(vrp.clone());
+// // Solve using Bellman split
+// let res = ind.bellman_split(1.5);
+
+// if res {
+//     log::info!("Bellman split successful");
+
+//     log::debug!("Initial objective: {}", ind.objective());
+//     log::info!("Vehicle routes: {:?}", ind.routes);
+
+//     // Run local search on individual
+//     let mut ls = HGSLS::new(ind.clone(), DEFAULT_PARAMS.excess_penalty);
+//     let accept_temp = 0.1;
+//     let mut learned = ls.run(accept_temp, Duration::from_millis(5_000));
+
+//     log::info!("Initial objective: {}", ind.objective());
+//     log::info!("Local search complete; objective: {}", learned.objective());
+//     // learned.save_solution_default();
+
+//     let mut objs = Vec::new();
+//     objs.push(learned.objective);
+//     for _ in 0..10 {
+//         let mut best = learned.clone();
+//         // Save split solution
+//         best.bellman_split(1.5);
+
+//         log::info!(
+//             "Running local search again on split solution (obj: {})",
+//             best.objective()
+//         );
+//         // Run local search on split solution
+//         let mut ls = HGSLS::new(best.clone(), DEFAULT_PARAMS.excess_penalty);
+//         let accept_temp = 0.1;
+//         learned = ls.run(accept_temp, Duration::from_millis(5_000));
+//         log::info!("Total route: {:?}", learned.total_route);
+//         log::info!("Local search complete; objective: {}",
+// learned.objective);         objs.push(learned.objective);
+//     }

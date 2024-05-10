@@ -1,6 +1,7 @@
 use std::{
     collections::{BinaryHeap, HashSet},
     fs,
+    hash::{Hash, Hasher},
     io::Write,
     sync::Arc,
 };
@@ -13,8 +14,8 @@ use crate::vrp_instance::VRPInstance;
 type F64 = OrderedFloat<f64>;
 
 // Represent INF using some really big number
-const INF: f64 = 1e30;
-const SMALLER_THAN_INF: f64 = 1e25;
+pub const INF: f64 = 1e30;
+pub const SMALLER_THAN_INF: f64 = 1e25;
 /// Represents an individual solution within the population.
 #[derive(Debug, Clone)]
 pub struct Individual {
@@ -46,6 +47,8 @@ pub struct Individual {
     pub total_dist: f64,
     /// Excess capacity used across all vehicles
     pub excess_cap: usize,
+    /// Penalty to use for excess capacity
+    pub excess_penalty: f64,
     /// Objective value
     pub objective: f64,
 
@@ -65,7 +68,32 @@ impl Individual {
         }
         total_route.shuffle(&mut thread_rng());
 
-        // Compute pred/succ/cust_routes/loads for each customer/route
+        let pred = vec![0; vrp.n_customers + 1];
+        let succ = vec![0; vrp.n_customers + 1];
+        let cust_routes = vec![0; vrp.n_customers + 1];
+        let loads = vec![0.0; vrp.n_customers + 1];
+
+        Individual {
+            total_route,
+            routes,
+            pred,
+            succ,
+            cust_routes,
+            loads,
+            fitness: INF,
+            vehicles_used: 0,
+            total_dist: 0.0,
+            excess_cap: 0,
+            excess_penalty: vrp.params.excess_penalty,
+            objective: INF,
+            vrp,
+        }
+    }
+
+    /// Initializes an individual from the VRP instance with a given total
+    /// route.
+    pub fn from_total_route(vrp: Arc<VRPInstance>, total_route: Vec<usize>) -> Individual {
+        let routes = vec![vec![]; vrp.n_vehicles];
         let pred = vec![0; vrp.n_customers + 1];
         let succ = vec![0; vrp.n_customers + 1];
         let cust_routes = vec![0; vrp.n_customers + 1];
@@ -82,9 +110,15 @@ impl Individual {
             vehicles_used: 0,
             total_dist: 0.0,
             excess_cap: 0,
+            excess_penalty: vrp.params.excess_penalty,
             objective: 0.0,
             vrp,
         }
+    }
+
+    /// Update excess penalty for this individual
+    pub fn set_excess_penalty(&mut self, excess_penalty: f64) {
+        self.excess_penalty = excess_penalty;
     }
 
     /// Compute objective as distance traveled, plus a penalty for excess
@@ -110,8 +144,7 @@ impl Individual {
             self.total_dist += dist;
             self.excess_cap += (load as i64 - self.vrp.vehicle_cap as i64).max(0) as usize;
         }
-        self.objective =
-            self.total_dist + (self.excess_cap as f64 * self.vrp.params.excess_penalty);
+        self.objective = self.total_dist + (self.excess_cap as f64 * self.excess_penalty);
         log::debug!(
             "Total distance: {:.3}, excess capacity: {}, objective: {:.3}",
             self.total_dist,
@@ -178,7 +211,11 @@ impl Individual {
             self.loads[r] = load;
         }
 
-        // Re-build total route
+        // Re-build total route from individual routes
+        self.total_route.clear();
+        for route in self.routes.iter() {
+            self.total_route.extend(route.iter());
+        }
         // Set objective
         self.objective();
     }
@@ -186,8 +223,8 @@ impl Individual {
     /// Splits the total route into vehicle routes using Bellman's algorithm in
     /// topological order. Used not only in feasible solution instantiation,
     /// but also in genetic crossover.
-    pub fn bellman_split(&mut self) -> bool {
-        log::info!("Current tour: {:?}", self.total_route);
+    pub fn bellman_split(&mut self, excess_cap: f64) -> bool {
+        log::trace!("Current tour: {:?}", self.total_route);
 
         let vrp = &self.vrp;
         // Predecessors for each customer in each vehicle
@@ -213,7 +250,7 @@ impl Individual {
                     // For each successive customer, add its distance and demand
                     for next in (c + 1)..(vrp.n_customers + 1) {
                         // If load is too high, stop considering
-                        if load >= 1.5 * vrp.vehicle_cap as f64 {
+                        if load >= excess_cap * vrp.vehicle_cap as f64 {
                             log::trace!(
                                 "Load {} too high for vehicle {}; stopping at {}",
                                 load,
@@ -267,6 +304,8 @@ impl Individual {
             }
             end = start;
         }
+        log::trace!("Total route: {:?}", self.total_route);
+        log::trace!("Individual routes: {:?}", self.routes);
 
         // Check if it cycled back to beginning (i.e. depot)
         if end != 0 {
@@ -284,6 +323,11 @@ impl Individual {
     pub fn greedy_nn(&mut self) -> bool {
         // record assigned customers
         let mut seen = HashSet::new();
+
+        // Clear existing routes
+        for route in self.routes.iter_mut() {
+            route.clear();
+        }
 
         // Take first n_vehicles customers as starting points
         for v in 0..self.vrp.n_vehicles {
@@ -355,10 +399,107 @@ impl Individual {
 
         todo!()
     }
+
+    /// Checks for validity in routes (i.e. no duplicate customers, all
+    /// customers), preds, and succs.
+    pub fn is_valid(&self) -> bool {
+        let n_customers = self.vrp.n_customers;
+        let mut seen = vec![false; n_customers + 1];
+        for (r, route) in self.routes.iter().enumerate() {
+            for (i, &c) in route.iter().enumerate() {
+                if c == 0 || c > n_customers {
+                    log::error!("Invalid customer ID: {}", c);
+                    return false;
+                }
+                if seen[c] {
+                    log::error!("Duplicate customer ID: {}", c);
+                    return false;
+                }
+                seen[c] = true;
+
+                // Check pred/succ
+                let pred = self.pred[c];
+                let succ = self.succ[c];
+                if pred == c || succ == c {
+                    log::error!("Customer {} has self-loop: pred={}, succ={}", c, pred, succ);
+                    return false;
+                }
+                if i == 0 && pred != 0 {
+                    log::error!("First customer {} has non-depot pred: {}", c, pred);
+                    return false;
+                }
+                if i == route.len() - 1 && succ != 0 {
+                    log::error!("Last customer {} has non-depot succ: {}", c, succ);
+                    return false;
+                }
+                if i > 0 && pred != route[i - 1] {
+                    log::error!(
+                        "Customer {} has pred {} but should be {}",
+                        c,
+                        pred,
+                        route[i - 1]
+                    );
+                    return false;
+                }
+                if i < route.len() - 1 && succ != route[i + 1] {
+                    log::error!(
+                        "Customer {} has succ {} but should be {}",
+                        c,
+                        succ,
+                        route[i + 1]
+                    );
+                    return false;
+                }
+
+                // Check cust_routes
+                if self.cust_routes[c] != r {
+                    log::error!(
+                        "Customer {} has route {} but should be {}",
+                        c,
+                        self.cust_routes[c],
+                        r
+                    );
+                    return false;
+                }
+            }
+        }
+        true
+    }
 }
 
-pub struct ProxIndividual {
-    pub prox: f64,
-    // TODO: maybe replace this with a slotmap key
-    pub ind: Arc<Individual>,
+impl PartialEq for Individual {
+    /// Two individuals are equal if their individual routes are equal (ignoring
+    /// route IDs)
+    fn eq(&self, other: &Self) -> bool {
+        // If total routes are inequal, return false
+        if self.total_route != other.total_route {
+            return false;
+        }
+        // Get and sort each individual's routes
+        let mut self_routes = self.routes.clone();
+        let mut other_routes = other.routes.clone();
+        self_routes.sort();
+        other_routes.sort();
+
+        // Check that each route is equal
+        for (self_r, other_r) in self_routes.iter().zip(other_routes.iter()) {
+            if self_r != other_r {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+impl Eq for Individual {}
+
+impl Hash for Individual {
+    // Generate hash by hashing total route, plus each individual route
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.total_route.hash(state);
+        for route in self.routes.iter() {
+            route.hash(state);
+        }
+    }
 }
