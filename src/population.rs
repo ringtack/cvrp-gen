@@ -94,15 +94,16 @@ impl Population {
         // Caps to scale w/ excess penalty if can't find feasible solution
         let excess_caps = [1., 1.05, 1.1]; //, 1.25, 1.5];
 
-        // Create channel of 4 * mu individuals to generate
-        let (idx_tx, idx_rx) = channel::bounded(2 * mu);
+        // Create channel of 2 * mu individuals to generate
+        let n_to_gen = 2 * mu;
+        let (idx_tx, idx_rx) = channel::bounded(n_to_gen);
         // Insert i from [0..4 * mu) into channel
-        for i in 0..4 * mu {
+        for i in 0..n_to_gen {
             idx_tx.send(i).unwrap();
         }
 
         // Create channel for workers to send individuals back
-        let (res_tx, res_rx) = channel::bounded(4 * mu);
+        let (res_tx, res_rx) = channel::bounded(n_to_gen);
         // Spawn n_threads workers to generate initial solutions
         let n_threads = self.vrp.params.n_threads;
         for _ in 0..n_threads {
@@ -156,7 +157,7 @@ impl Population {
         }
 
         // Collect individuals from workers
-        for _ in 0..4 * mu {
+        for _ in 0..n_to_gen {
             let (mut ind, i) = res_rx.recv().unwrap();
             self.add_individual(ind.clone(), true);
             // If infeasible, randomly re-run with higher penalty
