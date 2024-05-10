@@ -11,7 +11,7 @@ use rand::random;
 
 use crate::{
     hgsls::HGSLS,
-    local_search::{LocalSearch, LS_LIMIT_MS},
+    local_search::{LocalSearch, LS_LIMIT_SEC},
     params::Params,
     population::Population,
     vrp_instance::VRPInstance,
@@ -44,8 +44,8 @@ impl GeneticSearch {
     /// Create a new GeneticSearch instance.
     pub fn new(vrp: VRPInstance) -> GeneticSearch {
         let vrp = Arc::new(vrp);
-        let ls_time_limit = Duration::from_millis(
-            LS_LIMIT_MS.max((vrp.params.time_limit as f64 * LS_LIMIT_FRAC) as u64),
+        let ls_time_limit = Duration::from_secs(
+            LS_LIMIT_SEC.max((vrp.params.time_limit as f64 * LS_LIMIT_FRAC) as u64),
         );
         let pop = Population::new(vrp.clone(), ls_time_limit);
         GeneticSearch {
@@ -76,7 +76,7 @@ impl GeneticSearch {
 
         // Initialize a bunch of offspring to evaluate
         let max_pop = self.params.mu + self.params.lambda;
-        let n_offspring = (BACKLOG / 8).min(max_pop);
+        let n_offspring = (BACKLOG / 8).min(max_pop / 2);
         let offspring = self.generate_offspring(n_offspring);
         let excess_penalty = self.population.excess_penalty;
         // Send offspring to worker threads
@@ -90,8 +90,8 @@ impl GeneticSearch {
         // algorithm
         let n_threads = self.params.n_threads - 1;
         // Choose LS time limit as max(LS_LIMIT_MS, 2.5% of total time limit)
-        let ls_time_limit = Duration::from_millis(
-            LS_LIMIT_MS.max((self.params.time_limit as f64 * LS_LIMIT_FRAC) as u64),
+        let ls_time_limit = Duration::from_secs(
+            LS_LIMIT_SEC.max((self.vrp.params.time_limit as f64 * LS_LIMIT_FRAC) as u64),
         );
         log::debug!("LS time limit: {:?}", ls_time_limit);
         log::debug!("n threads: {}", n_threads);
@@ -127,7 +127,7 @@ impl GeneticSearch {
 
         let start = Instant::now();
         let has_limit = self.params.time_limit > 0;
-        let limit = Duration::from_millis(self.params.time_limit as u64);
+        let limit = Duration::from_secs(self.params.time_limit as u64);
         // Track iterations
         let mut i = 0;
         let mut i_ni = 0;

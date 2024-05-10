@@ -5,20 +5,20 @@ use lazy_static::lazy_static;
 lazy_static! {
   pub static ref DEFAULT_PARAMS: Params = Params {
     // # NNs to consider
-    gamma: 20,
+    gamma: 32,
 
     // Initial population size
-    mu: 25,
+    mu: 24,
     // Generation size
-    lambda: 40,
+    lambda: 80,
     // Number of "elite" individuals
-    elite: 4,
+    elite: 6,
     // Number of "close" individuals to consider in diversity calculation
-    close: 5,
+    close: 8,
     // Target feasible ratio
     xi: 0.2,
     // Runs before managing penalties
-    penalty_runs: 100,
+    penalty_runs: 500,
     // Penalty scaling
     penalty_inc: 1.2,
     penalty_dec: 0.8,
@@ -30,8 +30,8 @@ lazy_static! {
     iter_ni: 32_768,
     // Max restarts before stopping
     max_restarts: 32,
-    // Time limit in ms (TODO: change to 270s)
-    time_limit: 10_000,
+    // Time limit in sec
+    time_limit: 270,
     // How often to print progress (in iterations)
     print_progress: 1000,
 
@@ -66,10 +66,10 @@ pub struct Params {
     pub excess_penalty: f64,
 
     /// Iterations without improvement/restarts until termination (default:
-    /// 20000)
+    /// 32768)
     pub iter_ni: usize,
     pub max_restarts: usize,
-    /// Time limit until termination in ms (default 0)
+    /// Time limit until termination in sec (default 0)
     pub time_limit: usize,
 
     /// How often to print progress. 0 is never.

@@ -2,7 +2,7 @@ use std::{
     collections::{BinaryHeap, HashSet},
     fs,
     hash::{Hash, Hasher},
-    io::Write,
+    io::{self, BufRead, Write},
     sync::Arc,
 };
 
@@ -171,7 +171,7 @@ impl Individual {
         let mut f = fs::File::create(file_name).unwrap();
         let obj = self.objective();
         // Write objective to file
-        writeln!(f, "{}", obj).unwrap();
+        writeln!(f, "{} 0", obj).unwrap();
         // For each vehicle, write its route if non-empty
         for route in self.routes.iter() {
             log::debug!("Route: {:?}", route);
@@ -191,6 +191,36 @@ impl Individual {
             }
             writeln!(f).unwrap();
         }
+    }
+
+    pub fn load_solution(vrp: Arc<VRPInstance>, file_name: &str) -> Individual {
+        let f = fs::File::open(file_name).unwrap();
+        let mut lines = io::BufReader::new(f).lines();
+        let line = lines.next().unwrap().unwrap();
+        let parts = line
+            .split_whitespace()
+            .map(|x| x.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        let obj = parts[0];
+        let mut routes = vec![];
+        for line in lines {
+            let line = line.unwrap();
+            let parts = line.split_whitespace().map(|x| x.parse::<usize>().unwrap());
+            let route = parts.collect::<Vec<_>>();
+            routes.push(route);
+        }
+        let mut total_route = vec![];
+        for route in routes.iter() {
+            total_route.extend(route.iter());
+        }
+        let mut ind = Individual::new(vrp);
+        ind.total_route = total_route;
+        ind.routes = routes;
+        ind.objective = obj;
+
+        // Initialize metadata
+        ind.initialize_metadata();
+        ind
     }
 
     /// Initializes metadata surrounding the individual (i.e. pred, succ,
@@ -242,48 +272,49 @@ impl Individual {
             // For each customer, compute the lowest cost to reach it using this vehicle
             for c in v..vrp.n_customers {
                 // Only attempt if less than "infinity"
-                if cost_to_c[v][c] < INF {
-                    log::trace!("Computing cost for vehicle {} to customer {}", v, c);
+                if cost_to_c[v][c] >= INF {
+                    break;
+                }
+                log::trace!("Computing cost for vehicle {} to customer {}", v, c);
 
-                    let mut load = 0.;
-                    let mut dist = 0.;
+                let mut load = 0.;
+                let mut dist = 0.;
 
-                    // For each successive customer, add its distance and demand
-                    for next in (c + 1)..(vrp.n_customers + 1) {
-                        // If load is too high, stop considering
-                        if load >= excess_cap * vrp.vehicle_cap as f64 {
-                            log::trace!(
-                                "Load {} too high for vehicle {}; stopping at {}",
-                                load,
-                                v,
-                                next
-                            );
-                            break;
-                        }
+                // For each successive customer, add its distance and demand
+                for next in (c + 1)..(vrp.n_customers + 1) {
+                    // If load is too high, stop considering
+                    if load >= excess_cap * vrp.vehicle_cap as f64 {
+                        log::trace!(
+                            "Load {} too high for vehicle {}; stopping at {}",
+                            load,
+                            v,
+                            next
+                        );
+                        break;
+                    }
 
-                        // Get the actual customer on the tour; -1 to satisfy indexing in DP
-                        let cust_next = self.total_route[next - 1];
+                    // Get the actual customer on the tour; -1 to satisfy indexing in DP
+                    let cust_next = self.total_route[next - 1];
 
-                        load += vrp.customers[cust_next].demand as f64;
-                        // If next is c+1, use distance from depot; otherwise, use distance from
-                        // previous customer
-                        if next == c + 1 {
-                            dist += vrp.dist_mtx[0][cust_next];
-                        } else {
-                            // Get prev customer
-                            let cust_prev = self.total_route[next - 2];
-                            dist += vrp.dist_mtx[cust_prev][cust_next];
-                        }
-                        // Compute cost using current distance + distance from here back to depot +
-                        // a penalty if load is too high
-                        let cost = dist
-                            + vrp.dist_mtx[next][0]
-                            + vrp.params.excess_penalty * (load - vrp.vehicle_cap as f64).max(0.);
-                        dist = vrp.dist_mtx[c][next];
-                        if cost_to_c[v][c] + cost < cost_to_c[v + 1][next] {
-                            cost_to_c[v + 1][next] = cost_to_c[v][c] + cost;
-                            pred[v + 1][next] = c;
-                        }
+                    load += vrp.customers[cust_next].demand as f64;
+                    // If next is c+1, use distance from depot; otherwise, use distance from
+                    // previous customer
+                    if next == c + 1 {
+                        dist += vrp.dist_mtx[0][cust_next];
+                    } else {
+                        // Get prev customer
+                        let cust_prev = self.total_route[next - 2];
+                        dist += vrp.dist_mtx[cust_prev][cust_next];
+                    }
+                    // Compute cost using current distance + distance from here back to depot +
+                    // a penalty if load is too high
+                    let cost = dist
+                        + vrp.dist_mtx[cust_next][0]
+                        + vrp.params.excess_penalty * (load - vrp.vehicle_cap as f64).max(0.);
+                    // dist = vrp.dist_mtx[c][next];
+                    if cost_to_c[v][c] + cost < cost_to_c[v + 1][next] {
+                        cost_to_c[v + 1][next] = cost_to_c[v][c] + cost;
+                        pred[v + 1][next] = c;
                     }
                 }
             }
@@ -295,10 +326,22 @@ impl Individual {
             return false;
         }
         log::trace!("cost[veh][cust]: {:?}", cost_to_c);
-        // Reconstruct the routes
-        let mut end = vrp.n_customers;
-        for v in (0..vrp.n_vehicles).rev() {
+
+        // Check # of vehicles needed
+        let mut n_vehicles = self.vrp.n_vehicles;
+        let mut min_cost = cost_to_c[vrp.n_vehicles][vrp.n_customers];
+        for v in 1..vrp.n_vehicles {
+            if cost_to_c[v][vrp.n_customers] < min_cost {
+                min_cost = cost_to_c[v][vrp.n_customers];
+                n_vehicles = v;
+            }
+        }
+        // Clear then reconstruct routes
+        for v in 0..n_vehicles {
             self.routes[v].clear();
+        }
+        let mut end = vrp.n_customers;
+        for v in (0..n_vehicles).rev() {
             let start = pred[v + 1][end];
             for next in start..end {
                 self.routes[v].push(self.total_route[next]);

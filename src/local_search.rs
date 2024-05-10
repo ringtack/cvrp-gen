@@ -4,7 +4,7 @@ use crate::Individual;
 
 pub const EPSILON: f64 = 0.00001;
 // Default limit on LS time.
-pub const LS_LIMIT_MS: u64 = 5_000;
+pub const LS_LIMIT_SEC: u64 = 5;
 
 /// Trait for a local search algorithm.
 pub trait LocalSearch {
