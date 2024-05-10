@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use rand::{seq::SliceRandom, thread_rng};
 
 use crate::{
-    local_search::{sa_accept, LocalSearch},
+    local_search::{sa_accept, LocalSearch, EPSILON},
     polar_sector::PolarSector,
     vrp_instance::Customer,
     Individual,
@@ -97,7 +97,7 @@ impl HGSLS {
         let i = self.cust_i;
         let j = self.cust_j;
 
-        log::trace!("Trying relocate of {} after {}", i, j);
+        log::trace!("Trying relocate of {} to after {}", i, j);
 
         // If j is depot or i == succ_j, skip
         if j == 0 || i == self.ind.succ[j] {
@@ -110,6 +110,8 @@ impl HGSLS {
         let succ_i = self.ind.succ[i];
         let succ_j = self.ind.succ[j];
 
+        log::trace!("pred_i: {}, succ_i: {}, succ_j: {}", pred_i, succ_i, succ_j);
+
         // Check distance delta for relocation:
         // - for i's route: d(pred_i, succ_i) - d(pred_i, i) - d(i, succ_i)
         // - for j's route: d(j, i) + d(i, succ_j) - d(j, succ_j)
@@ -121,6 +123,7 @@ impl HGSLS {
         let ri = self.ind.cust_routes[i];
         let rj = self.ind.cust_routes[j];
         if ri != rj {
+            log::trace!("inter route swap");
             let load_i = self.ind.vrp.customers[i].demand;
 
             // See if load exceeds capacity in either swap
@@ -132,7 +135,14 @@ impl HGSLS {
 
         let net_change = delta_i + delta_j;
         if accept(net_change) {
-            log::trace!("Relocating {} after {} (delta {})", i, j, net_change);
+            log::trace!(
+                "Relocating {} after {} (d_i: {}, d_j: {})",
+                i,
+                j,
+                // net_change,
+                delta_i,
+                delta_j
+            );
 
             // ugh my indexing here is ugly but oh well
             self.insert_after(j, i);
@@ -681,7 +691,7 @@ impl HGSLS {
         (load - self.ind.vrp.vehicle_cap as f64).max(0.) * self.excess_penalty
     }
 
-    /// Inserts customer w/ id j after cstomer w/ id i
+    /// Inserts customer w/ id j after customer w/ id i
     fn insert_after(&mut self, i: usize, j: usize) {
         let succ_i = self.ind.succ[i];
         let pred_j = self.ind.pred[j];
@@ -795,6 +805,9 @@ impl HGSLS {
 
 impl LocalSearch for HGSLS {
     fn run(&mut self, time_limit: Duration, excess_penalty: f64, accept_temp: f64) -> Individual {
+        // Actually improved vs total calls
+        // let mut stats = vec![(0, 0); 8];
+
         // Set excess penalty (used by HGSLS for delta computation, used by Individual
         // for objective computation)
         self.excess_penalty = excess_penalty;
@@ -836,24 +849,59 @@ impl LocalSearch for HGSLS {
                         ci,
                         cj
                     );
+                    // let obj = self.ind.objective();
+                    // let mut pre = self.ind.clone();
+
                     self.cust_i = cust_i;
                     self.cust_j = cust_j;
                     if self.relocate_i_j(&accept) {
                         improved = true;
+                        // if self.ind.objective() <= obj + EPSILON {
+                        //     stats[0].0 += 1;
+                        // }
+                        // stats[0].1 += 1;
                     } else if self.relocate_iin_j(&accept) {
                         improved = true;
+                        // if self.ind.objective() < obj {
+                        //     stats[1].0 += 1;
+                        // }
+                        // stats[1].1 += 1;
                     } else if self.relocate_iin_j_flip(&accept) {
                         improved = true;
+                        // if self.ind.objective() < obj {
+                        //     stats[2].0 += 1;
+                        // }
+                        // stats[2].1 += 1;
                     } else if self.swap_i_j(&accept) {
                         improved = true;
+                        // if self.ind.objective() < obj {
+                        //     stats[3].0 += 1;
+                        // }
+                        // stats[3].1 += 1;
                     } else if self.swap_iin_j(&accept) {
                         improved = true;
+                        // if self.ind.objective() < obj {
+                        //     stats[4].0 += 1;
+                        // }
+                        // stats[4].1 += 1;
                     } else if self.swap_iin_jjn(&accept) {
                         improved = true;
+                        // if self.ind.objective() < obj {
+                        //     stats[5].0 += 1;
+                        // }
+                        // stats[5].1 += 1;
                     } else if self.two_opt(&accept) {
                         improved = true;
+                        // if self.ind.objective() < obj {
+                        //     stats[6].0 += 1;
+                        // }
+                        // stats[6].1 += 1;
                     } else if self.two_opt_star(&accept) {
                         improved = true;
+                        // if self.ind.objective() < obj {
+                        //     stats[7].0 += 1;
+                        // }
+                        // stats[7].1 += 1;
                     } else if self.ind.pred[cust_j] == 0 {
                         // If cj's predecessor is depot, try moves that insert
                         // ci right after depot
@@ -937,6 +985,7 @@ impl LocalSearch for HGSLS {
             }
         }
 
+        // log::info!("HGSLS stats: {:?}", stats);
         // Re-initialize metadata, then return
         self.ind.initialize_metadata();
         self.ind.clone()

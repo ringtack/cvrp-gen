@@ -134,12 +134,13 @@ impl Individual {
                 // If 0 or last customer, use depot, then customer
                 if i == 0 {
                     dist += self.vrp.dist_mtx[0][c];
-                } else if i == route.len() - 1 {
-                    dist += self.vrp.dist_mtx[c][0];
                 } else {
                     dist += self.vrp.dist_mtx[route[i - 1]][c];
                 }
                 load += self.vrp.customers[c].demand;
+            }
+            if !route.is_empty() {
+                dist += self.vrp.dist_mtx[*route.last().unwrap()][0];
             }
             self.total_dist += dist;
             self.excess_cap += (load as i64 - self.vrp.vehicle_cap as i64).max(0) as usize;

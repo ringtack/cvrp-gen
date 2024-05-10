@@ -7,18 +7,14 @@ pub mod polar_sector;
 pub mod population;
 pub mod vrp_instance;
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use clap::Parser;
 use individual::*;
 use params::DEFAULT_PARAMS;
 use vrp_instance::VRPInstance;
 
-use crate::{
-    genetic::{crossover, GeneticSearch},
-    hgsls::HGSLS,
-    local_search::LocalSearch,
-};
+use crate::{genetic::GeneticSearch, hgsls::HGSLS, local_search::LocalSearch};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about = "CVRP Solver using hybrid genetic search.")]
@@ -45,6 +41,23 @@ fn main() {
     params.time_limit = 240_000;
     // Create VRP instance from file
     let vrp = VRPInstance::new(args.file, params.clone());
+
+    // // Use bellman split, and save solution
+    // let mut ind = Individual::new(Arc::new(vrp.clone()));
+    // // ind.bellman_split(1.);
+    // ind.greedy_nn();
+    // ind.save_solution("greedy.1");
+
+    // // LS on result
+    // let mut ls = HGSLS::new(ind.clone());
+    // let mut learned = ls.run(
+    //     std::time::Duration::from_millis(5_000),
+    //     DEFAULT_PARAMS.excess_penalty,
+    //     0.1,
+    // );
+    // learned.save_solution("hgsls_1.1");
+
+    // return;
 
     // // Generate two individuals
     // let mut ind = Individual::new(Arc::new(vrp.clone()));
@@ -90,15 +103,10 @@ fn main() {
     // Get solution string from routes
     let mut sol = String::from("0 ");
     for route in best.routes.iter() {
-        sol.push_str(&format!(
-            "0 {}",
-            route
-                .iter()
-                .map(|x| x.to_string())
-                .collect::<Vec<_>>()
-                .join(" ")
-        ));
-        sol.push_str(" 0 ");
+        let mut route_str = route.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        route_str.insert(0, "0".to_string());
+        route_str.push("0".to_string());
+        sol = route_str.join(" ");
     }
     // Get rid of last space
     sol.pop();

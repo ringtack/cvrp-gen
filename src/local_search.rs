@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::Individual;
 
-const EPSILON: f64 = 0.00001;
+pub const EPSILON: f64 = 0.00001;
 // Default limit on LS time.
 pub const LS_LIMIT_MS: u64 = 5_000;
 

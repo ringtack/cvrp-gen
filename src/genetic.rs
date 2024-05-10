@@ -74,7 +74,7 @@ impl GeneticSearch {
 
         // Initialize a bunch of offspring to evaluate
         let max_pop = self.params.mu + self.params.lambda;
-        let n_offspring = (BACKLOG / 8).min(max_pop / 4);
+        let n_offspring = (BACKLOG / 32).min(max_pop / 5);
         let offspring = self.generate_offspring(n_offspring);
         let excess_penalty = self.population.excess_penalty;
         // Send offspring to worker threads
@@ -301,7 +301,7 @@ pub fn crossover(p1: &Individual, p2: &Individual) -> Individual {
     // routes
     let mut new_ind = Individual::from_total_route(p1.vrp.clone(), total_route.clone());
     new_ind.set_excess_penalty(excess_penalty);
-    let mut cap = 1.1;
+    let mut cap = 1.02;
     // Try bellman split for increasing capacities until success
     while !new_ind.bellman_split(cap) {
         cap *= 1.1;

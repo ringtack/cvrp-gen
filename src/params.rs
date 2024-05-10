@@ -8,9 +8,9 @@ lazy_static! {
     gamma: 32,
 
     // Initial population size
-    mu: 16,
+    mu: 25,
     // Generation size
-    lambda: 64,
+    lambda: 40,
     // Number of "elite" individuals
     elite: 4,
     // Number of "close" individuals to consider in diversity calculation

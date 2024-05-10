@@ -87,7 +87,7 @@ impl Population {
         let mu = self.vrp.params.mu;
 
         // Caps to scale w/ excess penalty if can't find feasible solution
-        let excess_caps = [1., 1.1, 1.25, 1.5];
+        let excess_caps = [1., 1.05, 1.1]; //, 1.25, 1.5];
 
         // Create channel of 4 * mu individuals to generate
         let (idx_tx, idx_rx) = channel::bounded(4 * mu);
@@ -256,6 +256,9 @@ impl Population {
             // Insert default into proximal list if not already there
             self.prox_individuals
                 .entry(ind_key)
+                .or_insert_with(Vec::new);
+            self.prox_individuals
+                .entry(*other_key)
                 .or_insert_with(Vec::new);
 
             self.insert_proximal(ind_key, *other_key);
@@ -432,6 +435,11 @@ impl Population {
         // Update pops
         self.feasible = pops[0].clone();
         self.infeasible = pops[1].clone();
+        log::debug!(
+            "pop sizes after survivor selection: {} feasible, {} infeasible",
+            self.feasible.len(),
+            self.infeasible.len()
+        );
     }
 
     /// Computes the holistic fitness of each individual in the population,
@@ -588,7 +596,7 @@ impl Display for Population {
 
         writeln!(f, "===== POPULATION STATS:").unwrap();
         writeln!(f, "\t- Best Overall: {}", self.best.objective).unwrap();
-        writeln!(f, "\t- Feasible:").unwrap();
+        writeln!(f, "\t- Feasible ({}):", self.feasible.len()).unwrap();
         writeln!(f, "\t\t* Best: {}", best_obj_feasible).unwrap();
         writeln!(
             f,
@@ -602,7 +610,7 @@ impl Display for Population {
             self.get_avg_diversity_feasible()
         )
         .unwrap();
-        writeln!(f, "\t- Infeasible:").unwrap();
+        writeln!(f, "\t- Infeasible ({}):", self.infeasible.len()).unwrap();
         writeln!(f, "\t\t* Best: {}", best_obj_infeasible).unwrap();
         writeln!(
             f,
