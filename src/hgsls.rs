@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use rand::{seq::SliceRandom, thread_rng};
 
 use crate::{
-    local_search::{sa_accept, LocalSearch, EPSILON},
+    local_search::{sa_accept, LocalSearch},
     polar_sector::PolarSector,
     vrp_instance::Customer,
     Individual,

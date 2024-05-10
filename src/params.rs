@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 lazy_static! {
   pub static ref DEFAULT_PARAMS: Params = Params {
     // # NNs to consider
-    gamma: 32,
+    gamma: 20,
 
     // Initial population size
     mu: 25,
@@ -27,9 +27,9 @@ lazy_static! {
     excess_penalty: 1_000.0,
 
     // Number of no improvement iterations to run before stopping
-    iter_ni: 20_000,
+    iter_ni: 32_768,
     // Max restarts before stopping
-    max_restarts: 24,
+    max_restarts: 32,
     // Time limit in ms (TODO: change to 270s)
     time_limit: 10_000,
     // How often to print progress (in iterations)

@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering::SeqCst},
+        atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
         Arc,
     },
     time::{Duration, Instant},
@@ -67,19 +67,23 @@ impl GeneticSearch {
         self.population.generate_initial_population();
 
         let done = Arc::new(AtomicBool::new(false));
+        // Record current generation of offspring
+        let curr_gen = Arc::new(AtomicUsize::new(0));
         // Create channel to send offspring to worker threads
-        let (off_tx, off_rx) = bounded::<(Individual, f64)>(BACKLOG);
+        let (off_tx, off_rx) = bounded::<(Individual, f64, usize)>(BACKLOG);
         // Create channel to receive offspring from worker threads
         let (res_tx, res_rx) = bounded::<Individual>(BACKLOG);
 
         // Initialize a bunch of offspring to evaluate
         let max_pop = self.params.mu + self.params.lambda;
-        let n_offspring = (BACKLOG / 32).min(max_pop / 5);
+        let n_offspring = (BACKLOG / 8).min(max_pop);
         let offspring = self.generate_offspring(n_offspring);
         let excess_penalty = self.population.excess_penalty;
         // Send offspring to worker threads
         for off in offspring {
-            off_tx.send((off, excess_penalty)).unwrap();
+            off_tx
+                .send((off, excess_penalty, curr_gen.load(SeqCst)))
+                .unwrap();
         }
 
         // Spawn worker threads to evaluate offspring; keep one thread for main genetic
@@ -97,13 +101,18 @@ impl GeneticSearch {
             let off_rx = off_rx.clone();
             let res_tx = res_tx.clone();
             let ls_time_limit = ls_time_limit.clone();
+            let curr_gen = curr_gen.clone();
             let done = done.clone();
             let thr_handle = std::thread::spawn(move || {
                 // For each offspring to evaluate, run local search, then send back to
                 // population
                 // TODO: record average time waiting for recv, send, and backlog sizes
                 while !done.load(SeqCst) {
-                    if let Ok((ind, excess_penalty)) = off_rx.try_recv() {
+                    if let Ok((ind, excess_penalty, gen)) = off_rx.try_recv() {
+                        // If generation outdated, skip
+                        if gen != curr_gen.load(SeqCst) {
+                            continue;
+                        }
                         let mut ls = HGSLS::new(ind);
                         let learned = ls.run(ls_time_limit, excess_penalty, 0.1);
                         // Don't block on sending result back, in case main thread backlogged
@@ -131,6 +140,7 @@ impl GeneticSearch {
             // If no improvement for iter_ni iterations, check if within time limit
             if i_ni >= self.params.iter_ni {
                 if has_limit && start.elapsed() < limit {
+                    log::info!("No improvement for {} iterations. Restarting.", i_ni);
                     // Restart population search
                     let best_restart = self.population.restart();
                     self.best_objectives.push(best_restart.objective);
@@ -143,23 +153,37 @@ impl GeneticSearch {
                             break;
                         }
                     }
+
+                    // Reset ni and gen
+                    i_ni = 0;
+                    curr_gen.store(0, SeqCst);
+
+                    // Create and send new batch of offspring
+                    self.generate_offspring(n_offspring)
+                        .into_iter()
+                        .for_each(|off| {
+                            off_tx
+                                .send((off, self.population.excess_penalty, 0))
+                                .unwrap();
+                        });
                 } else {
                     log::info!("No improvement for {} iterations. Terminating.", i_ni);
                     break;
                 }
             }
 
-            log::trace!(
+            log::debug!(
                 "Backlog: {} (sending more if < {})",
                 off_tx.len(),
                 BACKLOG - n_offspring
             );
             // If worker channel has space, generate and send offspring
+            let gen = curr_gen.load(SeqCst);
             if off_tx.len() < BACKLOG - n_offspring {
                 let offspring = self.generate_offspring(n_offspring);
                 let excess_penalty = self.population.excess_penalty;
                 for off in offspring {
-                    off_tx.send((off, excess_penalty)).unwrap();
+                    off_tx.send((off, excess_penalty, gen)).unwrap();
                 }
             }
 
@@ -195,7 +219,7 @@ impl GeneticSearch {
                     self.population.add_individual(learned, false);
                 }
             }
-            log::trace!("Received {} offspring from workers", num_rcvd);
+            log::debug!("Received {} offspring from workers", num_rcvd);
 
             // Check if need to rescale penalties
             if self.population.need_penalty_management() {
@@ -217,11 +241,25 @@ impl GeneticSearch {
                     self.population.feasible.len(),
                     self.population.infeasible.len()
                 );
+
                 self.population.select_survivors();
+                // Increase generation after survivor selection
+                let new_gen = curr_gen.fetch_add(1, SeqCst) + 1;
+
+                // Regenerate offspring
+                self.generate_offspring(n_offspring)
+                    .into_iter()
+                    .for_each(|off| {
+                        off_tx
+                            .send((off, self.population.excess_penalty, new_gen))
+                            .unwrap();
+                    });
+
                 log::debug!(
-                    "Selected (f: {}, inf: {})",
+                    "Selected (f: {}, inf: {}); new generation {}",
                     self.population.feasible.len(),
-                    self.population.infeasible.len()
+                    self.population.infeasible.len(),
+                    new_gen
                 );
             }
 

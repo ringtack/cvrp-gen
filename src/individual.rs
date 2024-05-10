@@ -146,7 +146,7 @@ impl Individual {
             self.excess_cap += (load as i64 - self.vrp.vehicle_cap as i64).max(0) as usize;
         }
         self.objective = self.total_dist + (self.excess_cap as f64 * self.excess_penalty);
-        log::debug!(
+        log::trace!(
             "Total distance: {:.3}, excess capacity: {}, objective: {:.3}",
             self.total_dist,
             self.excess_cap,
