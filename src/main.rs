@@ -42,7 +42,7 @@ fn main() {
 
     let mut params = DEFAULT_PARAMS.clone();
     // params.n_threads = 1;
-    params.time_limit = 120_000;
+    params.time_limit = 240_000;
     // Create VRP instance from file
     let vrp = VRPInstance::new(args.file, params.clone());
 

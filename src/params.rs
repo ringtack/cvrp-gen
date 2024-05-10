@@ -8,13 +8,13 @@ lazy_static! {
     gamma: 32,
 
     // Initial population size
-    mu: 32,
+    mu: 16,
     // Generation size
     lambda: 64,
     // Number of "elite" individuals
     elite: 4,
     // Number of "close" individuals to consider in diversity calculation
-    close: 8,
+    close: 5,
     // Target feasible ratio
     xi: 0.2,
     // Runs before managing penalties
@@ -29,7 +29,7 @@ lazy_static! {
     // Number of no improvement iterations to run before stopping
     iter_ni: 20_000,
     // Max restarts before stopping
-    max_restarts: 16,
+    max_restarts: 64,
     // Time limit in ms (TODO: change to 270s)
     time_limit: 10_000,
     // How often to print progress (in iterations)

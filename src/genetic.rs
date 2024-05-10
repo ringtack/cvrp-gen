@@ -229,6 +229,7 @@ impl GeneticSearch {
             // Log every params.print_progress iterations
             if self.params.print_progress > 0 && i % self.params.print_progress == 0 {
                 log::info!("====== GENETIC ALGORITHM STATE (iter {i}, ni {i_ni}) ======");
+                log::info!("\t- Instance: {}", self.vrp.instance_name);
                 log::info!("\t- Num restarts: {}", self.best_objectives.len());
                 log::info!("\t- Best objectives: {:?}", self.best_objectives);
                 log::info!("{}", self.population);
