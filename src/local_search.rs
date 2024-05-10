@@ -8,8 +8,8 @@ pub const EPSILON: f64 = 0.00001;
 // Default limit on LS time.
 pub const LS_LIMIT_SEC: u64 = 5;
 
-pub const ACCEPT_TEMP: f64 = 0.1;
-pub const MIN_ACCEPT_TEMP: f64 = 0.001;
+pub const ACCEPT_TEMP: f64 = 0.;
+pub const MIN_ACCEPT_TEMP: f64 = 0.;
 
 /// Trait for a local search algorithm.
 pub trait LocalSearch {
