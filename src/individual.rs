@@ -131,7 +131,7 @@ impl Individual {
             let mut load = 0.;
             let mut dist = 0.0;
             for (i, &c) in route.iter().enumerate() {
-                // If 0 or last customer, use depot, then customer
+                // If 0, use depot, then customer
                 if i == 0 {
                     dist += self.vrp.dist_mtx[0][c];
                 } else {
@@ -139,6 +139,7 @@ impl Individual {
                 }
                 load += self.vrp.customers[c].demand;
             }
+            // If non-empty, add distance from last customer back to depot
             if !route.is_empty() {
                 dist += self.vrp.dist_mtx[*route.last().unwrap()][0];
             }
@@ -205,8 +206,12 @@ impl Individual {
         let mut routes = vec![];
         for line in lines {
             let line = line.unwrap();
-            let parts = line.split_whitespace().map(|x| x.parse::<usize>().unwrap());
-            let route = parts.collect::<Vec<_>>();
+            // Split by whitespace, and convert to customers (filter out depots)
+            let route = line
+                .split_whitespace()
+                .map(|x| x.parse::<usize>().unwrap())
+                .filter(|&x| x != 0)
+                .collect::<Vec<_>>();
             routes.push(route);
         }
         let mut total_route = vec![];

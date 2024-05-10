@@ -11,7 +11,7 @@ use rand::random;
 
 use crate::{
     hgsls::HGSLS,
-    local_search::{LocalSearch, LS_LIMIT_SEC},
+    local_search::{LocalSearch, ACCEPT_TEMP, LS_LIMIT_SEC, MIN_ACCEPT_TEMP},
     params::Params,
     population::Population,
     vrp_instance::VRPInstance,
@@ -114,7 +114,8 @@ impl GeneticSearch {
                             continue;
                         }
                         let mut ls = HGSLS::new(ind);
-                        let learned = ls.run(ls_time_limit, excess_penalty, 0.1);
+                        let learned =
+                            ls.run(ls_time_limit, excess_penalty, ACCEPT_TEMP, MIN_ACCEPT_TEMP);
                         // Don't block on sending result back, in case main thread backlogged
                         if let Err(_) = res_tx.try_send(learned) {
                             log::warn!("Failed to send offspring result back; channel full");
@@ -196,9 +197,10 @@ impl GeneticSearch {
             // If infeasible, randomly regen
             let feasible = ind.is_feasible();
             if !feasible && random::<bool>() {
+                log::debug!("Regenerating infeasible offspring");
                 ind.bellman_split(1.5);
                 let mut ls = HGSLS::new(ind);
-                let learned = ls.run(ls_time_limit, self.population.excess_penalty, 0.1);
+                let learned = ls.run(ls_time_limit, self.population.excess_penalty, 0., 0.);
                 self.population.add_individual(learned, false);
             }
 
@@ -213,9 +215,10 @@ impl GeneticSearch {
                 // If infeasible, randomly regen
                 let feasible = ind.is_feasible();
                 if !feasible && random::<bool>() {
+                    log::debug!("Regenerating infeasible offspring");
                     ind.bellman_split(1.5);
                     let mut ls = HGSLS::new(ind);
-                    let learned = ls.run(ls_time_limit, self.population.excess_penalty, 0.1);
+                    let learned = ls.run(ls_time_limit, self.population.excess_penalty, 0., 0.);
                     self.population.add_individual(learned, false);
                 }
             }

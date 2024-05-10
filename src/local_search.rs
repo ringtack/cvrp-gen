@@ -1,10 +1,15 @@
 use std::time::Duration;
 
+use rand::random;
+
 use crate::Individual;
 
 pub const EPSILON: f64 = 0.00001;
 // Default limit on LS time.
 pub const LS_LIMIT_SEC: u64 = 5;
+
+pub const ACCEPT_TEMP: f64 = 0.1;
+pub const MIN_ACCEPT_TEMP: f64 = 0.001;
 
 /// Trait for a local search algorithm.
 pub trait LocalSearch {
@@ -14,21 +19,25 @@ pub trait LocalSearch {
     /// - `time_limit`: time limit for search
     ///
     /// Returns the optimized individual found during local search.
-    fn run(&mut self, time_limit: Duration, excess_penalty: f64, accept_temp: f64) -> Individual;
+    fn run(
+        &mut self,
+        time_limit: Duration,
+        excess_penalty: f64,
+        accept_temp: f64,
+        min_accept_temp: f64,
+    ) -> Individual;
 }
 
 /// Simulated annealing accept fn using temp.
-pub fn sa_accept(_temp: f64) -> Box<dyn Fn(f64) -> bool> {
+pub fn sa_accept(accept_temp: f64) -> Box<dyn Fn(f64) -> bool> {
     Box::new(move |delta: f64| -> bool {
         // If delta negative, it lowers objective value, so accept
         if delta < -EPSILON {
             return true;
         } else {
-            return false;
+            // Otherwise, accept with some probability accept_temp
+            random::<f64>() < accept_temp
         }
-        // Otherwise, accept with probability based on epsilon
-        // log::trace!("accept probability: {}", (delta / temp).exp());
-        // random::<f64>() < (delta / temp).exp()
     })
 }
 

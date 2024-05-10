@@ -10,7 +10,7 @@ lazy_static! {
     // Initial population size
     mu: 24,
     // Generation size
-    lambda: 80,
+    lambda: 40,
     // Number of "elite" individuals
     elite: 6,
     // Number of "close" individuals to consider in diversity calculation
@@ -21,7 +21,7 @@ lazy_static! {
     penalty_runs: 500,
     // Penalty scaling
     penalty_inc: 1.2,
-    penalty_dec: 0.8,
+    penalty_dec: 0.85,
     // Initial penalty on excess capacity
     // TODO: scale by max(0.1, min(1_000, maxDist/maxDemand))
     excess_penalty: 1_000.0,

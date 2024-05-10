@@ -12,7 +12,12 @@ use fxhash::FxHashMap;
 use rand::Rng;
 use slotmap::{new_key_type, SlotMap};
 
-use crate::{hgsls::HGSLS, local_search::LocalSearch, vrp_instance::VRPInstance, Individual, INF};
+use crate::{
+    hgsls::HGSLS,
+    local_search::{LocalSearch, ACCEPT_TEMP, MIN_ACCEPT_TEMP},
+    vrp_instance::VRPInstance,
+    Individual, INF,
+};
 
 // How much to tolerate differences from feasible:infeasible ratio
 const RATIO_TOLERANCE: f64 = 0.025;
@@ -90,7 +95,7 @@ impl Population {
         let excess_caps = [1., 1.05, 1.1]; //, 1.25, 1.5];
 
         // Create channel of 4 * mu individuals to generate
-        let (idx_tx, idx_rx) = channel::bounded(4 * mu);
+        let (idx_tx, idx_rx) = channel::bounded(2 * mu);
         // Insert i from [0..4 * mu) into channel
         for i in 0..4 * mu {
             idx_tx.send(i).unwrap();
@@ -136,7 +141,12 @@ impl Population {
                     }
                     // Run local search to optimize initial solution
                     let mut ls = HGSLS::new(ind);
-                    let learned = ls.run(ls_time_limit, vrp.params.excess_penalty, 0.1);
+                    let learned = ls.run(
+                        ls_time_limit,
+                        vrp.params.excess_penalty,
+                        ACCEPT_TEMP,
+                        MIN_ACCEPT_TEMP,
+                    );
 
                     log::trace!("Got learned individual w/ objective {}", learned.objective);
                     // Send learned individual back through channel
@@ -159,7 +169,12 @@ impl Population {
                 assert!(ind.is_valid());
                 ind.bellman_split(2.0);
                 let mut ls = HGSLS::new(ind.clone());
-                let learned = ls.run(self.ls_time_limit, self.excess_penalty * 10., 0.1); // Only add if feasible
+                let learned = ls.run(
+                    self.ls_time_limit,
+                    self.excess_penalty * 10.,
+                    ACCEPT_TEMP,
+                    0.,
+                ); // Only add if feasible
                 if learned.is_feasible() {
                     self.add_individual(learned, false);
                 }
@@ -350,15 +365,15 @@ impl Population {
         let target_ratio = self.vrp.params.xi;
         // If ratio is too low (i.e. too few feasible), increase penalty for excess
         // capacity to discourage exploration
-        if ratio < target_ratio - RATIO_TOLERANCE && self.excess_penalty >= PENALTY_LOWER_BOUND {
+        if ratio < target_ratio - RATIO_TOLERANCE && self.excess_penalty <= PENALTY_UPPER_BOUND {
             self.excess_penalty =
-                (self.excess_penalty * self.vrp.params.penalty_inc).max(PENALTY_LOWER_BOUND);
+                (self.excess_penalty * self.vrp.params.penalty_inc).min(PENALTY_UPPER_BOUND);
         }
         // If ratio is too high (i.e. too many feasible), decrease penalty for excess
         // capacity to encourage exploration
-        if ratio > target_ratio + RATIO_TOLERANCE && self.excess_penalty <= PENALTY_UPPER_BOUND {
+        if ratio > target_ratio + RATIO_TOLERANCE && self.excess_penalty >= PENALTY_LOWER_BOUND {
             self.excess_penalty =
-                (self.excess_penalty * self.vrp.params.penalty_dec).min(PENALTY_UPPER_BOUND);
+                (self.excess_penalty * self.vrp.params.penalty_dec).max(PENALTY_LOWER_BOUND);
         }
 
         // Update objectives of infeasible individuals based on new penalty

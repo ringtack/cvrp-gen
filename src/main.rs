@@ -19,7 +19,7 @@ use vrp_instance::VRPInstance;
 use crate::{
     genetic::{crossover, GeneticSearch},
     hgsls::HGSLS,
-    local_search::LocalSearch,
+    local_search::{LocalSearch, ACCEPT_TEMP, MIN_ACCEPT_TEMP},
 };
 
 #[derive(Parser, Debug, Clone)]
@@ -34,7 +34,7 @@ pub struct Args {
     pub verbosity: log::LevelFilter,
 
     /// If solution file provided, try to optimize with LS
-    #[arg(long)]
+    #[arg(short, long)]
     pub solution: Option<String>,
 
     /// Number of threads. Default is number of physical cores.
@@ -60,6 +60,10 @@ pub struct Args {
     /// Generation size. Default is 80.
     #[arg(long)]
     pub lambda: Option<usize>,
+
+    /// Print progress every n iterations. Default is 1000.
+    #[arg(long)]
+    pub print_progress: Option<usize>,
 }
 
 fn main() {
@@ -78,20 +82,36 @@ fn main() {
     if let Some(time_limit) = args.time_limit {
         params.time_limit = time_limit;
     }
+    if let Some(iter_ni) = args.iter_ni {
+        params.iter_ni = iter_ni;
+    }
+    if let Some(restarts) = args.restarts {
+        params.max_restarts = restarts;
+    }
+    if let Some(mu) = args.mu {
+        params.mu = mu;
+    }
+    if let Some(lambda) = args.lambda {
+        params.lambda = lambda;
+    }
+    if let Some(print_progress) = args.print_progress {
+        params.print_progress = print_progress;
+    }
 
     // Create VRP instance from file
     let vrp = VRPInstance::new(args.file, params.clone());
 
     if let Some(solution_file) = args.solution {
-        let ind = Individual::load_solution(Arc::new(vrp), &solution_file);
+        let mut ind = Individual::load_solution(Arc::new(vrp), &solution_file);
+        ind.save_solution_default();
+        return;
         let mut ls = HGSLS::new(ind.clone());
         let mut learned = ls.run(
             std::time::Duration::from_millis(5_000),
             DEFAULT_PARAMS.excess_penalty,
-            0.1,
+            ACCEPT_TEMP,
+            MIN_ACCEPT_TEMP,
         );
-        learned.save_solution_default();
-        return;
     }
 
     // Create genetic search instance

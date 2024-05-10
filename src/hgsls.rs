@@ -804,7 +804,13 @@ impl HGSLS {
 }
 
 impl LocalSearch for HGSLS {
-    fn run(&mut self, time_limit: Duration, excess_penalty: f64, accept_temp: f64) -> Individual {
+    fn run(
+        &mut self,
+        time_limit: Duration,
+        excess_penalty: f64,
+        accept_temp: f64,
+        min_accept_temp: f64,
+    ) -> Individual {
         // Actually improved vs total calls
         // let mut stats = vec![(0, 0); 8];
 
@@ -813,9 +819,7 @@ impl LocalSearch for HGSLS {
         self.excess_penalty = excess_penalty;
         self.ind.set_excess_penalty(excess_penalty);
 
-        // Get accept operator
-        let accept = sa_accept(accept_temp);
-
+        let mut accept_temp = accept_temp;
         let mut improved = true;
         let start = Instant::now();
         // Loop until no improvement
@@ -835,6 +839,12 @@ impl LocalSearch for HGSLS {
             let mut cj = 0;
             let mut ri = 0;
             let mut rj = 0;
+
+            // Get accept operator
+            let accept = sa_accept(accept_temp);
+            // Scale accept_temp down
+            accept_temp = (accept_temp * 0.99).max(min_accept_temp);
+            // log::debug!("new accept temp: {}", accept_temp);
 
             // For each customer, try all NNs
             while ci < self.cust_order.len() {
