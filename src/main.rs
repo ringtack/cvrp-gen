@@ -88,7 +88,7 @@ fn main() {
     best.save_solution_default();
 
     // Get solution string from routes
-    let mut sol = String::new();
+    let mut sol = String::from("0 ");
     for route in best.routes.iter() {
         sol.push_str(&format!(
             "0 {}",
@@ -100,6 +100,8 @@ fn main() {
         ));
         sol.push_str(" 0 ");
     }
+    // Get rid of last space
+    sol.pop();
     log::info!("Total runtime: {:.3?}", vrp.start_time.elapsed());
     println!(
         "{}",
@@ -112,43 +114,3 @@ fn main() {
         )
     )
 }
-
-// // Create individual from VRP
-// let mut ind = Individual::new(vrp.clone());
-// // Solve using Bellman split
-// let res = ind.bellman_split(1.5);
-
-// if res {
-//     log::info!("Bellman split successful");
-
-//     log::debug!("Initial objective: {}", ind.objective());
-//     log::info!("Vehicle routes: {:?}", ind.routes);
-
-//     // Run local search on individual
-//     let mut ls = HGSLS::new(ind.clone(), DEFAULT_PARAMS.excess_penalty);
-//     let accept_temp = 0.1;
-//     let mut learned = ls.run(accept_temp, Duration::from_millis(5_000));
-
-//     log::info!("Initial objective: {}", ind.objective());
-//     log::info!("Local search complete; objective: {}", learned.objective());
-//     // learned.save_solution_default();
-
-//     let mut objs = Vec::new();
-//     objs.push(learned.objective);
-//     for _ in 0..10 {
-//         let mut best = learned.clone();
-//         // Save split solution
-//         best.bellman_split(1.5);
-
-//         log::info!(
-//             "Running local search again on split solution (obj: {})",
-//             best.objective()
-//         );
-//         // Run local search on split solution
-//         let mut ls = HGSLS::new(best.clone(), DEFAULT_PARAMS.excess_penalty);
-//         let accept_temp = 0.1;
-//         learned = ls.run(accept_temp, Duration::from_millis(5_000));
-//         log::info!("Total route: {:?}", learned.total_route);
-//         log::info!("Local search complete; objective: {}",
-// learned.objective);         objs.push(learned.objective);
-//     }
