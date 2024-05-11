@@ -305,6 +305,7 @@ impl GeneticSearch {
 pub fn crossover(p1: &Individual, p2: &Individual) -> Individual {
     // Randomly pick start/end indices in p1 for crossover
     let len = p1.total_route.len();
+    assert!(len == p2.total_route.len());
     let mut start = rand::random::<usize>() % len;
     let end = rand::random::<usize>() % len;
 
